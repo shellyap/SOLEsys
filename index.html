@@ -11,6 +11,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
@@ -21,7 +22,8 @@
         import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, deleteDoc, doc, serverTimestamp, updateDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-firestore.js";
 
-        window.FirebaseSDK = { 
+        // ✅ Firebase Ready Global Object
+        window.FirebaseReady = {
             initializeApp, getAuth, onAuthStateChanged, signInAnonymously, 
             signInWithCustomToken, getFirestore, collection, addDoc, 
             onSnapshot, query, deleteDoc, doc, serverTimestamp, updateDoc, getDoc, setDoc
@@ -48,8 +50,23 @@
                 opacity: 1 !important;
             }
             .a4-fixed { height: 297mm !important; width: 210mm !important; border: none !important; box-shadow: none !important; margin: 0 !important; page-break-after: always; overflow: hidden !important; transform: none !important; }
-            .a4-auto { width: 210mm !important; height: auto !important; min-height: 297mm !important; border: none !important; box-shadow: none !important; margin: 0 !important; transform: none !important; }
-            tr, .img-card { page-break-inside: avoid !important; }
+            
+            .a4-auto { 
+                width: 210mm !important; 
+                height: auto !important; 
+                min-height: 297mm !important; 
+                border: none !important; 
+                box-shadow: none !important; 
+                margin: 0 !important; 
+                padding: 15mm !important;
+                display: block !important;
+                transform: none !important; 
+            }
+            
+            table { page-break-inside: auto; width: 100% !important; border-collapse: collapse; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            .img-card { page-break-inside: avoid; margin-bottom: 15px; }
+            h1, h2, .bg-gray-100 { page-break-after: avoid; }
         }
 
         .preview-container {
@@ -61,7 +78,10 @@
             padding: 20px 0;
         }
 
+        /* OPR Fixed Size */
         .a4-fixed { width: 210mm; height: 297mm; padding: 10mm; background: white; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column; box-sizing: border-box; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,0.1); transform-origin: top center; }
+        
+        /* Executive Auto Size */
         .a4-auto { width: 210mm; min-height: 297mm; height: auto; padding: 15mm; background: white; flex-shrink: 0; display: flex; flex-direction: column; box-sizing: border-box; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,0.1); transform-origin: top center; }
         
         #print-area { display: none; }
@@ -95,8 +115,18 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- 1. GLOBAL CONSTANTS & CORE DATA (DECLARED FIRST) ---
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz90O07Wp6fZ9c6XZXdJ2Pgoa0un_PA6U_H14DxH3e4h4byv--maAls_wwlAOJ3v449/exec";
+        // --- 1. CONFIG & DATA (DECLARED FIRST) ---
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwLBiRsSEHdmLxDHBmmNneaDxDGIQVgWboBd1dcEIxmSZnCMsZzyg66k9TGhtWYleLJ/exec";
+
+        const FIREBASE_CONFIG_DATA = {
+            apiKey: "AIzaSyDCTebeG42Vj1G9TRIApiLhwfsxng5mP0Y",
+            authDomain: "ppkbis-shell.firebaseapp.com",
+            projectId: "ppkbis-shell",
+            storageBucket: "ppkbis-shell.firebasestorage.app",
+            messagingSenderId: "942093342515",
+            appId: "1:942093342515:web:29a844b91ba357835a9046",
+            measurementId: "G-M5Q9NCD7JF"
+        };
 
         const CATEGORIES_LIST = [
             { id: 'UNIT BAHASA', label: 'Unit Bahasa', color: '#2563eb', text: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-600' },
@@ -120,6 +150,8 @@
             'SUMBER TEKNOLOGI PENDIDIKAN': ['Eddy@Iskandar bin Ajmain']
         };
 
+        const JENIS_TUGAS_OPTIONS = ["KURSUS", "BENGKEL", "TAKILMAT", "MESYUARAT DI LUAR TUGAS RASMI"];
+
         // --- 2. HELPER FUNCTIONS ---
         function getDefaultJawatan(cid) {
             const cat = CATEGORIES_LIST.find(c => c.id === cid);
@@ -127,13 +159,6 @@
             const isPP = ['PENDIDIKAN ISLAM', 'PENDIDIKAN KHAS', 'PEMULIHAN KHAS', 'SUMBER TEKNOLOGI PENDIDIKAN'].includes(cid);
             return isPP ? `PENOLONG PEGAWAI PENDIDIKAN (${cat.label.toUpperCase()})` : `SISC+ ${cat.label.toUpperCase()}`;
         }
-
-        const INITIAL_FORM = {
-            reportType: 'opr', jenisTugasRasmi: 'KURSUS', namaProgram: '', kategori: 'UNIT BAHASA', disediakanOleh: '', 
-            jawatanPenyedia: getDefaultJawatan('UNIT BAHASA'), tarikhDari: '', tarikhHingga: '', tarikhLaporan: '', 
-            masaMula: '', masaTamat: '', tempat: '', sasaran: '', aktiviti: '', anjuran: '', 
-            rujukanSurat: '', kehadiran: '', pengenalan: '', objektif: '', pengisian: '', catatan: '', penutup: ''
-        };
 
         const formatDateRange = (d1, d2) => {
             const f1 = d1 ? d1.split('-').reverse().join('/') : '';
@@ -148,9 +173,35 @@
             return `${hour % 12 || 12}:${m} ${ampm}`;
         };
 
-        const JENIS_TUGAS_OPTIONS = ["KURSUS", "BENGKEL", "TAKILMAT", "MESYUARAT DI LUAR TUGAS RASMI"];
+        const compressImage = (base64Str, maxWidth = 800, quality = 0.6) => {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.src = base64Str;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxWidth) {
+                        height = (maxWidth / width) * height;
+                        width = maxWidth;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+            });
+        };
 
-        // --- 3. BASE COMPONENTS (ICONS) ---
+        const INITIAL_FORM = {
+            reportType: 'opr', jenisTugasRasmi: 'KURSUS', namaProgram: '', kategori: 'UNIT BAHASA', disediakanOleh: '', 
+            jawatanPenyedia: getDefaultJawatan('UNIT BAHASA'), tarikhDari: '', tarikhHingga: '', tarikhLaporan: '', 
+            masaMula: '', masaTamat: '', tempat: '', sasaran: '', aktiviti: '', anjuran: '', 
+            rujukanSurat: '', kehadiran: '', pengenalan: '', objektif: '', pengisian: '', catatan: '', penutup: ''
+        };
+
+        // --- 3. UI COMPONENTS (DEFINED EARLY) ---
         const IconBase = ({ size = 24, className = "", children, ...props }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
                 {children}
@@ -158,7 +209,7 @@
         );
 
         const Icons = {
-            Sparkles: (p) => <IconBase {...p}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1-1.275 1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 5H5"/><path d="M19 19v4"/><path d="M23 21h-4"/></IconBase>,
+            Sparkles: (p) => <IconBase {...p}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1-1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 5H5"/><path d="M19 19v4"/><path d="M23 21h-4"/></IconBase>,
             Layout: (p) => <IconBase {...p}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" x2="21" y1="10" y2="10"/><line x1="10" x2="10" y1="21" y2="10"/></IconBase>,
             Flag: (p) => <IconBase {...p}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></IconBase>,
             Library: (p) => <IconBase {...p}><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></IconBase>,
@@ -184,7 +235,6 @@
 
         const { Sparkles, Layout, Flag, Library, BarChart2, Settings, Camera, Cloud, ChevronLeft, Download, Printer, ExternalLink, Eye, Edit2, Trash2, School, X, Plus, Users, Trash, ChevronDown, Menu } = Icons;
 
-        // --- 4. DOCUMENT PREVIEW COMPONENTS ---
         const ReportDoc = ({ data, reportImages, config }) => {
             const cat = CATEGORIES_LIST.find(c => c.id === data.kategori) || CATEGORIES_LIST[0];
             return (
@@ -260,8 +310,8 @@
                             <div className="bg-gray-100 p-2 font-bold uppercase text-center border-2 border-black">Lampiran Bergambar</div>
                             <div className="grid grid-cols-2 gap-8">
                                 {reportImages.map((img, i) => img ? (
-                                    <div key={i} className="img-card border border-gray-300 aspect-[4/3] flex items-center justify-center bg-gray-50 overflow-hidden rounded shadow-sm">
-                                        <img src={img} className="w-full h-full object-cover" />
+                                    <div key={i} className="img-card border border-gray-300 aspect-video flex items-center justify-center bg-gray-50 overflow-hidden rounded shadow-sm">
+                                        <img src={img} className="max-w-full max-h-full object-contain" />
                                     </div>
                                 ) : null)}
                             </div>
@@ -278,7 +328,24 @@
             </div>
         );
 
-        // --- 5. MAIN APP COMPONENT ---
+        const PreviewMenuComp = ({ handlePrint, downloadAsJPG, downloadAsPDF, reportType }) => (
+            <div className="preview-toolbar no-print flex items-center justify-center gap-2 mb-4 bg-white p-2 rounded-2xl shadow-md border border-slate-100">
+                <button onClick={reportType === 'eksekutif' ? downloadAsPDF : handlePrint} title="Download as PDF/Print" className="btn-action btn-action-square btn-action-pdf">
+                    <Download size={20} />
+                    <span className="mt-1 uppercase font-bold text-[7px]">PDF</span>
+                </button>
+                <button onClick={downloadAsJPG} title="Download as Image" className="btn-action btn-action-square btn-action-jpg">
+                    <Download size={20} />
+                    <span className="mt-1 uppercase font-bold text-[7px]">JPG</span>
+                </button>
+                <button onClick={handlePrint} title="Print Document" className="btn-action btn-action-square btn-action-print">
+                    <Printer size={20} />
+                    <span className="mt-1 uppercase font-bold text-[7px]">PRINT</span>
+                </button>
+            </div>
+        );
+
+        // --- 4. MAIN APP COMPONENT ---
         function App() {
             const [user, setUser] = useState(null);
             const [db, setDb] = useState(null);
@@ -312,7 +379,7 @@
                 staffData: DEFAULT_STAFF_DATA
             });
 
-            // Scaling for mobile
+            // Dynamic scaling for mobile preview
             const [previewScale, setPreviewScale] = useState(1);
             const containerRef = useRef(null);
 
@@ -339,14 +406,14 @@
                 return Object.values(sysConfig.staffData).flat().sort();
             }, [sysConfig.staffData]);
 
-            // Firebase Initialization Rule 3
+            // Robust Firebase Initialization
             useEffect(() => {
                 const initFirebase = async () => {
-                    if (window.FirebaseSDK && typeof __firebase_config !== 'undefined') {
+                    if (window.FirebaseReady) {
                         try {
-                            const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, onAuthStateChanged } = window.FirebaseSDK;
-                            const firebaseConfig = JSON.parse(__firebase_config);
-                            const app = initializeApp(firebaseConfig);
+                            const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, onAuthStateChanged } = window.FirebaseReady;
+                            const config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : FIREBASE_CONFIG_DATA;
+                            const app = initializeApp(config);
                             const auth = getAuth(app);
                             const firestore = getFirestore(app);
                             setDb(firestore);
@@ -370,14 +437,14 @@
                         }
                     }
                 };
-                const interval = setInterval(() => { if (window.FirebaseSDK) { clearInterval(interval); initFirebase(); } }, 200);
+                const interval = setInterval(() => { if (window.FirebaseReady) { clearInterval(interval); initFirebase(); } }, 150);
                 return () => clearInterval(interval);
             }, []);
 
-            // Data Fetching Rule 1: Strict Paths
+            // Data Fetching
             useEffect(() => {
                 if (!user || !db) return;
-                const { collection, onSnapshot, doc } = window.FirebaseSDK;
+                const { collection, onSnapshot, doc } = window.FirebaseReady;
                 const reportsCol = collection(db, 'artifacts', appId, 'public', 'data', 'reports');
                 const unsubReports = onSnapshot(reportsCol, (snap) => {
                     const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -422,6 +489,48 @@
                 } catch (e) { showStatus("Ralat JPG", "error"); }
             };
 
+            // ✅ MULTI-PAGE PDF EXPORT (Specially for Executive Report)
+            const downloadAsPDF = async () => {
+                if (!window.html2canvas || !window.jspdf) return;
+                showStatus("Menyediakan PDF berbilang halaman...");
+                try {
+                    const area = document.getElementById('print-area');
+                    area.style.display = 'block';
+                    area.style.position = 'fixed';
+                    area.style.left = '0'; area.style.top = '0';
+                    area.style.opacity = '1'; area.style.zIndex = '99999';
+                    area.style.backgroundColor = '#ffffff';
+
+                    const canvas = await window.html2canvas(area, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+                    area.style.display = 'none';
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const imgWidth = 210;
+                    const pageHeight = 295; // A4 height approx
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    let heightLeft = imgHeight;
+                    let position = 0;
+
+                    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+
+                    while (heightLeft >= 0) {
+                        position = heightLeft - imgHeight;
+                        pdf.addPage();
+                        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                        heightLeft -= pageHeight;
+                    }
+
+                    pdf.save(`${(viewingReport || formData).namaProgram || "Laporan"}_SOLE.pdf`);
+                    showStatus("PDF dimuat turun");
+                } catch (e) { 
+                    console.error(e);
+                    showStatus("Ralat PDF", "error"); 
+                }
+            };
+
             const handleDriveUpload = async () => {
                 if (!window.html2canvas) return;
                 try {
@@ -431,19 +540,13 @@
                     area.style.left = '0'; area.style.top = '0';
                     area.style.opacity = '1'; area.style.zIndex = '99999';
                     area.style.backgroundColor = '#ffffff';
-
                     await new Promise(r => setTimeout(r, 800));
-                    const canvas = await window.html2canvas(area, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+                    const canvas = await window.html2canvas(area, { scale: 1.5, useCORS: true, backgroundColor: "#ffffff" });
                     area.style.display = 'none';
-
-                    const base64 = canvas.toDataURL('image/jpeg', 0.85); 
-                    const name = (viewingReport || formData).namaProgram || "Laporan_SOLE";
-                    const category = (viewingReport || formData).kategori;
-                    const staffName = (viewingReport || formData).disediakanOleh;
-
+                    const base64 = canvas.toDataURL('image/jpeg', 0.7); 
                     await fetch(WEB_APP_URL, {
                         method: "POST",
-                        body: JSON.stringify({ fileData: base64, fileName: `${name}.jpg`, mimeType: "image/jpeg", category, staffName })
+                        body: JSON.stringify({ fileData: base64, fileName: `${(viewingReport || formData).namaProgram || "Laporan"}_SOLE.jpg`, mimeType: "image/jpeg", category: (viewingReport || formData).kategori, staffName: (viewingReport || formData).disediakanOleh })
                     });
                 } catch (e) { console.error("Drive error:", e); }
             };
@@ -452,7 +555,7 @@
                 if (!formData.namaProgram || !formData.tarikhDari) return showStatus("Tajuk & Tarikh diperlukan!", "error");
                 if (!user || !db) return showStatus("Cloud sync belum sedia...", "error");
                 setIsSaving(true);
-                const { collection, addDoc, doc, updateDoc, serverTimestamp } = window.FirebaseSDK;
+                const { collection, addDoc, doc, updateDoc, serverTimestamp } = window.FirebaseReady;
                 try {
                     const payload = { ...formData, images, updatedAt: serverTimestamp() };
                     if (editingId) { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', editingId), payload); }
@@ -467,7 +570,7 @@
 
             const deleteReport = async (id) => {
                 if (!confirm("Padam laporan ini secara kekal?")) return;
-                const { doc, deleteDoc } = window.FirebaseSDK;
+                const { doc, deleteDoc } = window.FirebaseReady;
                 try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', id)); showStatus("Rekod dipadam", "success"); } catch (e) { showStatus("Gagal dipadam", "error"); }
             };
 
@@ -483,11 +586,14 @@
                 });
             };
 
-            const handleImageUpload = (index, e) => {
+            const handleImageUpload = async (index, e) => {
                 const file = e.target.files[0];
                 if (file) {
                     const reader = new FileReader();
-                    reader.onload = (ev) => { setImages(prev => { const n = [...prev]; n[index] = ev.target.result; return n; }); };
+                    reader.onload = async (ev) => {
+                        const compressed = await compressImage(ev.target.result);
+                        setImages(prev => { const n = [...prev]; n[index] = compressed; return n; }); 
+                    };
                     reader.readAsDataURL(file);
                 }
             };
@@ -555,22 +661,14 @@
                 setSysConfig(prev => ({ ...prev, staffData: newStaffData }));
             };
 
-            const PreviewMenuComp = ({ handlePrint, downloadAsJPG }) => (
-                <div className="preview-toolbar no-print">
-                    <button onClick={handlePrint} title="Download as PDF" className="btn-action btn-action-square btn-action-pdf">
-                        <Download size={20} />
-                        <span className="mt-1 uppercase font-bold text-[7px]">PDF</span>
-                    </button>
-                    <button onClick={downloadAsJPG} title="Download as Image" className="btn-action btn-action-square btn-action-jpg">
-                        <Download size={20} />
-                        <span className="mt-1 uppercase font-bold text-[7px]">JPG</span>
-                    </button>
-                    <button onClick={handlePrint} title="Print Document" className="btn-action btn-action-square btn-action-print">
-                        <Printer size={20} />
-                        <span className="mt-1 uppercase font-bold text-[7px]">PRINT</span>
-                    </button>
-                </div>
-            );
+            if (isDbConnecting) {
+                return (
+                    <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0f172a] text-white">
+                        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-center">Cloud Synchronizing...</p>
+                    </div>
+                );
+            }
 
             return (
                 <React.Fragment>
@@ -578,7 +676,7 @@
                         
                         <header className="md:hidden bg-slate-900 text-white p-4 flex items-center justify-between z-50">
                             <div className="flex items-center gap-3">
-                                <Sparkles className="text-indigo-400" size={24}/>
+                                <Sparkles size={24} className="text-indigo-400" />
                                 <h1 className="text-xl font-black tracking-tighter leading-none">SOLE-system</h1>
                             </div>
                             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg">
@@ -589,7 +687,9 @@
                         <div className="flex flex-1 overflow-hidden relative">
                             <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
                                 <div className="p-8 bg-slate-950 flex flex-col gap-4 text-center mobile-hide">
-                                    <div className="mx-auto bg-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3"><Sparkles className="text-white" size={24}/></div>
+                                    <div className="mx-auto bg-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transform -rotate-3">
+                                        <Sparkles size={24} className="text-white" />
+                                    </div>
                                     <h1 className="text-2xl font-black text-white tracking-tighter uppercase leading-none mt-2">SOLE-system</h1>
                                     <p className="text-[7px] text-slate-400 font-bold uppercase leading-tight">(Sistem OPR & Laporan Eksekutif Sektor Pembelajaran PPD Ranau)</p>
                                 </div>
@@ -602,12 +702,66 @@
                                     <button onClick={() => handleTabChange('settings')} className={`w-full flex items-center gap-3 p-4 rounded-xl transition-all text-xs font-bold uppercase tracking-wider ${activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}><Settings size={18}/> System Config</button>
                                 </nav>
                                 <div className="p-6 text-center mt-auto">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400/60 bg-indigo-950/30 py-2 rounded-xl border border-indigo-500/10">System Developed By : YapShell</p>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-400/60 bg-indigo-950/30 py-2 rounded-xl border border-indigo-500/10 text-center font-bold">System Developed By : YapShell</p>
                                 </div>
                             </aside>
 
                             <main className="flex-1 h-full overflow-y-auto bg-[#f8fafc] p-4 md:p-12 relative">
                                 <div className="max-w-6xl mx-auto w-full pb-24">
+                                    {activeTab === 'analisis' && (
+                                        <div className="space-y-10 fade-in">
+                                            <div className="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                                                <div>
+                                                    <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase">Analysis Dashboard</h2>
+                                                    <p className="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-widest">Real-time Metrics & Statistics</p>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <select value={anaFilterUnit} onChange={e => setAnaFilterUnit(e.target.value)} className="p-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none shadow-inner"><option value="ALL">All Units</option>{CATEGORIES_LIST.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
+                                                    <select value={anaFilterType} onChange={e => setAnaFilterType(e.target.value)} className="p-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none shadow-inner"><option value="ALL">All Types</option><option value="opr">OPR</option><option value="eksekutif">Executive</option></select>
+                                                    <select value={anaFilterPerson} onChange={e => setAnaFilterPerson(e.target.value)} className="p-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none shadow-inner"><option value="ALL">All Officers</option>{ALL_STAFF_LIST.map(name => <option key={name} value={name}>{name}</option>)}</select>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex flex-col items-center"><Library size={32} className="text-indigo-600 mb-2"/><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Records</p><h3 className="text-5xl font-black text-slate-900 mt-1">{stats.total}</h3></div>
+                                                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex flex-col">
+                                                    <div className="flex justify-between items-start mb-4"><div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">OPR Ratio</p><h3 className="text-4xl font-black text-slate-900">{stats.oprCount}</h3></div><span className="text-lg font-black text-indigo-500">{stats.total > 0 ? ((stats.oprCount / stats.total) * 100).toFixed(1) : 0}%</span></div>
+                                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${stats.total > 0 ? (stats.oprCount / stats.total) * 100 : 0}%` }}></div></div>
+                                                </div>
+                                                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex flex-col">
+                                                    <div className="flex justify-between items-start mb-4"><div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Executive Ratio</p><h3 className="text-4xl font-black text-slate-900">{stats.execCount}</h3></div><span className="text-lg font-black text-amber-500">{stats.total > 0 ? ((stats.execCount / stats.total) * 100).toFixed(1) : 0}%</span></div>
+                                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-amber-500 transition-all duration-1000" style={{ width: `${stats.total > 0 ? (stats.execCount / stats.total) * 100 : 0}%` }}></div></div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                                                <div className="lg:col-span-8 bg-white p-6 md:p-12 rounded-[2.5rem] border shadow-sm overflow-x-auto">
+                                                    <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3 mb-16"><BarChart2 size={20} className="text-indigo-500" /> Comparison by Unit</h4>
+                                                    <div className="flex items-end justify-between h-56 min-w-[500px] border-b relative">
+                                                        {CATEGORIES_LIST.map((cat) => {
+                                                            const count = stats.unitCounts[cat.id] || 0;
+                                                            const max = Math.max(...Object.values(stats.unitCounts), 1);
+                                                            const height = stats.total > 0 ? (count / max) * 100 : 0;
+                                                            return (<div key={cat.id} className="relative flex flex-col items-center flex-1 mx-1 h-full group text-center"><div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[8px] px-2 py-1 rounded shadow-xl z-20 whitespace-nowrap">{count}</div><div className="w-full bg-slate-50 rounded-t-xl overflow-hidden h-full flex flex-col justify-end"><div className="chart-bar-anim w-full" style={{ height: `${height}%`, backgroundColor: cat.color }}></div></div><div className="absolute top-full mt-4 w-full h-12"><span className="text-[7px] font-black text-slate-400 uppercase transform -rotate-45 block origin-center">{cat.label}</span></div></div>);
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                <div className="lg:col-span-4 bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl flex flex-col min-h-[400px]">
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest mb-10 text-slate-400 flex items-center gap-2"><Users size={16} className="text-amber-400" /> Top Contributors</h4>
+                                                    <div className="space-y-4 flex-grow overflow-y-auto pr-2 scrollbar-hide">
+                                                        {stats.ranking.length > 0 ? stats.ranking.map((rank, idx) => (
+                                                            <div key={idx} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/10">
+                                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${idx === 0 ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-400'}`}>{idx + 1}</div>
+                                                                <div className="flex-grow min-w-0"><p className="text-[9px] font-black uppercase truncate">{rank.name}</p><div className="mt-1 w-full h-1 bg-white/10 rounded-full"><div className="h-full bg-amber-400" style={{ width: `${(rank.count / (stats.ranking[0]?.count || 1)) * 100}%` }}></div></div></div>
+                                                                <div className="font-black text-xs text-amber-400 pr-1">{rank.count}</div>
+                                                            </div>
+                                                        )) : (<div className="h-full flex items-center justify-center opacity-30 italic text-[10px] uppercase font-bold text-white text-center">No Data</div>)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {(activeTab === 'editor' || activeTab === 'laporan_eksekutif') && !viewingReport && (
                                         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 md:gap-12 fade-in">
                                             <div className="xl:col-span-5 space-y-8 order-2 xl:order-1">
@@ -657,21 +811,26 @@
                                                             <div className="grid grid-cols-2 gap-4">
                                                                 {images.map((img, i) => (
                                                                     <div key={`img-slot-${i}`} className="aspect-video bg-slate-100 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden group">
-                                                                        {img ? (<React.Fragment><img src={img} className="w-full h-full object-cover" /><button type="button" onClick={() => removeImageSlot(i)} className="absolute top-2 right-2 p-2 bg-rose-500 text-white rounded-full shadow-lg opacity-100 xl:opacity-0 xl:group-hover:opacity-100 transition-all"><X size={14}/></button></React.Fragment>) : (
+                                                                        {img ? (<React.Fragment><img src={img} className="w-full h-full object-cover" /><button type="button" onClick={() => removeImageSlot(i)} className="absolute top-2 right-2 p-2 bg-rose-500 text-white rounded-full shadow-lg opacity-100 transition-all"><Icons.X size={14}/></button></React.Fragment>) : (
                                                                             <div className="flex flex-col items-center gap-2"><label className="cursor-pointer flex flex-col items-center gap-2"><Camera size={24} className="text-slate-400" /><input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(i, e)} /></label>{formData.reportType === 'eksekutif' && (<button onClick={() => removeImageSlot(i)} className="text-[8px] font-bold text-rose-400 uppercase hover:text-rose-600 transition-colors">Hapus</button>)}</div>
                                                                         )}
                                                                     </div>
                                                                 ))}
                                                             </div>
                                                         </div>
-                                                        <button onClick={handleSaveReport} disabled={isSaving} className="w-full bg-slate-900 hover:bg-black text-white font-black py-6 rounded-3xl shadow-2xl transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs mt-6">{isSaving ? 'Processing...' : <><Icons.Cloud size={20} /> Simpan ke Cloud</>}</button>
+                                                        <button onClick={handleSaveReport} disabled={isSaving} className="w-full bg-slate-900 hover:bg-black text-white font-black py-6 rounded-3xl shadow-2xl transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs mt-6">{isSaving ? 'Processing...' : <><Cloud size={20} /> Simpan ke Cloud</>}</button>
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="xl:col-span-7 flex flex-col items-center space-y-4 order-1 xl:order-2" ref={containerRef}>
-                                                <PreviewMenuComp handlePrint={handlePrintAction} downloadAsJPG={downloadAsJPG} />
-                                                <div className="preview-container" style={{ height: (297 * 3.78 * previewScale) + 'px' }}>
-                                                    <div style={{ transform: `scale(${previewScale})` }}>
+                                                <PreviewMenuComp 
+                                                    handlePrint={handlePrintAction} 
+                                                    downloadAsJPG={downloadAsJPG} 
+                                                    downloadAsPDF={downloadAsPDF}
+                                                    reportType={formData.reportType} 
+                                                />
+                                                <div className="preview-container" style={{ height: (formData.reportType === 'eksekutif' ? 'auto' : (297 * 3.78 * previewScale) + 'px') }}>
+                                                    <div style={{ transform: formData.reportType === 'eksekutif' ? 'none' : `scale(${previewScale})`, width: formData.reportType === 'eksekutif' ? '100%' : 'auto' }}>
                                                         {formData.reportType === 'eksekutif' ? <ExecDoc data={formData} reportImages={images} config={sysConfig} /> : <ReportDoc data={formData} reportImages={images.slice(0,4)} config={sysConfig} />}
                                                     </div>
                                                 </div>
@@ -690,10 +849,10 @@
                                                     <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full md:w-64 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-bold outline-none shadow-inner" />
                                                 </div>
                                                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 border-t pt-8">
-                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Unit</span><select value={archiveFilterUnit} onChange={e => setArchiveFilterUnit(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase outline-none shadow-sm transition-all"><option value="ALL">All</option>{CATEGORIES_LIST.map(cat => (<option key={cat.id} value={cat.id}>{cat.label}</option>))}</select></div>
-                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Officer</span><select value={archiveFilterPerson} onChange={e => setArchiveFilterPerson(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase outline-none shadow-sm transition-all"><option value="ALL">All</option>{ALL_STAFF_LIST.map(name => <option key={name} value={name}>{name}</option>)}</select></div>
-                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Type</span><select value={archiveFilterType} onChange={e => setArchiveFilterType(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase outline-none shadow-sm transition-all"><option value="ALL">All</option><option value="opr">OPR</option><option value="eksekutif">Exec</option></select></div>
-                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Year</span><select value={archiveFilterYear} onChange={e => setArchiveFilterYear(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase outline-none shadow-sm transition-all"><option value="ALL">All</option>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}</select></div>
+                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Unit</span><select value={archiveFilterUnit} onChange={e => setArchiveFilterUnit(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase shadow-sm transition-all"><option value="ALL">All</option>{CATEGORIES_LIST.map(cat => (<option key={cat.id} value={cat.id}>{cat.label}</option>))}</select></div>
+                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Officer</span><select value={archiveFilterPerson} onChange={e => setArchiveFilterPerson(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase shadow-sm transition-all"><option value="ALL">All</option>{ALL_STAFF_LIST.map(name => <option key={name} value={name}>{name}</option>)}</select></div>
+                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Type</span><select value={archiveFilterType} onChange={e => setArchiveFilterType(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase shadow-sm transition-all"><option value="ALL">All</option><option value="opr">OPR</option><option value="eksekutif">Exec</option></select></div>
+                                                    <div className="flex flex-col gap-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">Year</span><select value={archiveFilterYear} onChange={e => setArchiveFilterYear(e.target.value)} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase shadow-sm transition-all"><option value="ALL">All</option>{availableYears.map(year => <option key={year} value={year}>{year}</option>)}</select></div>
                                                     <div className="flex flex-col gap-1 col-span-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">From</span><input type="date" value={archiveFilterDateStart} onChange={e => setArchiveFilterDateStart(e.target.value)} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-bold outline-none" /></div>
                                                     <div className="flex flex-col gap-1 col-span-1"><span className="text-[8px] font-black text-slate-400 uppercase ml-2">To</span><input type="date" value={archiveFilterDateEnd} onChange={e => setArchiveFilterDateEnd(e.target.value)} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-bold outline-none" /></div>
                                                 </div>
@@ -714,59 +873,17 @@
                                             <div className="w-full max-w-[210mm] flex items-center bg-white p-4 md:p-8 rounded-[2rem] shadow-2xl border border-slate-100 gap-6">
                                                 <button onClick={() => {setViewingReport(null); setActiveTab('archive');}} className="flex items-center gap-3 text-slate-500 hover:text-indigo-600 font-black text-[10px] uppercase transition-colors"><ChevronLeft size={24}/> Back</button>
                                                 <div className="ml-auto">
-                                                    <PreviewMenuComp handlePrint={handlePrintAction} downloadAsJPG={downloadAsJPG} />
+                                                    <PreviewMenuComp 
+                                                        handlePrint={handlePrintAction} 
+                                                        downloadAsJPG={downloadAsJPG} 
+                                                        downloadAsPDF={downloadAsPDF}
+                                                        reportType={viewingReport.reportType}
+                                                    />
                                                 </div>
                                             </div>
-                                            <div className="preview-container" style={{ height: (297 * 3.78 * previewScale) + 'px' }}>
-                                                <div style={{ transform: `scale(${previewScale})` }}>
+                                            <div className="preview-container" style={{ height: (viewingReport.reportType === 'eksekutif' ? 'auto' : (297 * 3.78 * previewScale) + 'px') }}>
+                                                <div style={{ transform: viewingReport.reportType === 'eksekutif' ? 'none' : `scale(${previewScale})`, width: viewingReport.reportType === 'eksekutif' ? '100%' : 'auto' }}>
                                                     {viewingReport.reportType === 'eksekutif' ? <ExecDoc data={viewingReport} reportImages={viewingReport.images || []} config={sysConfig} /> : <ReportDoc data={viewingReport} reportImages={(viewingReport.images || []).slice(0,4)} config={sysConfig} />}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'analisis' && (
-                                        <div className="space-y-10 fade-in">
-                                            <div className="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                                                <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase">Analysis Dashboard</h2>
-                                                <div className="flex flex-wrap gap-2">
-                                                    <select value={anaFilterUnit} onChange={e => setAnaFilterUnit(e.target.value)} className="p-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none shadow-inner"><option value="ALL">All Units</option>{CATEGORIES_LIST.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
-                                                    <select value={anaFilterType} onChange={e => setAnaFilterType(e.target.value)} className="p-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none shadow-inner"><option value="ALL">All Types</option><option value="opr">OPR</option><option value="eksekutif">Executive</option></select>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex flex-col items-center"><Library size={32} className="text-indigo-600 mb-2"/><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Records</p><h3 className="text-5xl font-black text-slate-900 mt-1">{stats.total}</h3></div>
-                                                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex flex-col">
-                                                    <div className="flex justify-between items-start mb-4"><div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">OPR</p><h3 className="text-4xl font-black text-slate-900">{stats.oprCount}</h3></div><span className="text-lg font-black text-indigo-500">{stats.total > 0 ? ((stats.oprCount / stats.total) * 100).toFixed(1) : 0}%</span></div>
-                                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500" style={{ width: `${stats.total > 0 ? (stats.oprCount / stats.total) * 100 : 0}%` }}></div></div>
-                                                </div>
-                                                <div className="bg-white p-8 rounded-[2rem] border shadow-sm flex flex-col">
-                                                    <div className="flex justify-between items-start mb-4"><div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Exec</p><h3 className="text-4xl font-black text-slate-900">{stats.execCount}</h3></div><span className="text-lg font-black text-amber-500">{stats.total > 0 ? ((stats.execCount / stats.total) * 100).toFixed(1) : 0}%</span></div>
-                                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-amber-500" style={{ width: `${stats.total > 0 ? (stats.execCount / stats.total) * 100 : 0}%` }}></div></div>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                                                <div className="lg:col-span-8 bg-white p-6 md:p-12 rounded-[2.5rem] border shadow-sm overflow-x-auto">
-                                                    <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3 mb-10"><BarChart2 size={20} className="text-indigo-500" /> Comparison</h4>
-                                                    <div className="flex items-end justify-between h-56 min-w-[500px] border-b relative">
-                                                        {CATEGORIES_LIST.map((cat) => {
-                                                            const count = stats.unitCounts[cat.id] || 0;
-                                                            const height = stats.total > 0 ? (count / Math.max(...Object.values(stats.unitCounts), 1)) * 100 : 0;
-                                                            return (<div key={cat.id} className="relative flex flex-col items-center flex-1 mx-1 h-full group text-center"><div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[8px] px-2 py-1 rounded shadow-xl z-20 whitespace-nowrap">{count}</div><div className="w-full bg-slate-50 rounded-t-xl overflow-hidden h-full flex flex-col justify-end"><div className="chart-bar-anim w-full" style={{ height: `${height}%`, backgroundColor: cat.color }}></div></div><div className="absolute top-full mt-4 w-full h-12"><span className="text-[7px] font-black text-slate-400 uppercase transform -rotate-45 block origin-center">{cat.label}</span></div></div>);
-                                                        })}
-                                                    </div>
-                                                </div>
-                                                <div className="lg:col-span-4 bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl flex flex-col min-h-[400px]">
-                                                    <h4 className="text-[10px] font-black uppercase tracking-widest mb-8 text-slate-400 flex items-center gap-2"><Users size={16} className="text-amber-400" /> Top Contributors</h4>
-                                                    <div className="space-y-4 flex-grow overflow-y-auto pr-2 scrollbar-hide">
-                                                        {stats.ranking.length > 0 ? stats.ranking.map((rank, idx) => (
-                                                            <div key={idx} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/10">
-                                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${idx === 0 ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-400'}`}>{idx + 1}</div>
-                                                                <div className="flex-grow min-w-0"><p className="text-[9px] font-black uppercase truncate">{rank.name}</p><div className="mt-1 w-full h-1 bg-white/10 rounded-full"><div className="h-full bg-amber-400" style={{ width: `${(rank.count / (stats.ranking[0]?.count || 1)) * 100}%` }}></div></div></div>
-                                                                <div className="font-black text-xs text-amber-400">{rank.count}</div>
-                                                            </div>
-                                                        )) : (<div className="h-full flex items-center justify-center opacity-30 italic text-[10px] uppercase font-bold text-white">No Ranking Data</div>)}
-                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -794,7 +911,13 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <button onClick={async () => { const { doc, setDoc } = window.FirebaseSDK; const configDoc = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global_config'); await setDoc(configDoc, sysConfig); showStatus("Saved successfully!"); }} className="w-full mt-10 py-5 bg-indigo-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg hover:bg-indigo-700 transition-all">Save All Settings</button>
+                                                <button onClick={async () => { 
+                                                    if (!user || !db) return showStatus("Sync not ready", "error");
+                                                    const { doc, setDoc } = window.FirebaseReady; 
+                                                    const configDoc = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global_config'); 
+                                                    await setDoc(configDoc, sysConfig); 
+                                                    showStatus("Configuration saved to Cloud!"); 
+                                                }} className="w-full mt-10 py-5 bg-indigo-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg hover:bg-indigo-700 transition-all">Save All Settings</button>
                                             </div>
                                         </div>
                                     )}
